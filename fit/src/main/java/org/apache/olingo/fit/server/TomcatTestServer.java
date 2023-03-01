@@ -35,18 +35,13 @@ import java.util.logging.Handler;
 import java.util.logging.Level;
 import java.util.logging.SimpleFormatter;
 
-import javax.servlet.ServletContext;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServlet;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
-import javax.servlet.http.HttpSessionEvent;
-import javax.servlet.http.HttpSessionListener;
-
+import jakarta.servlet.ServletContext;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.*;
 import org.apache.catalina.Context;
 import org.apache.catalina.LifecycleException;
 import org.apache.catalina.LifecycleState;
+import org.apache.catalina.loader.WebappClassLoader;
 import org.apache.catalina.loader.WebappLoader;
 import org.apache.catalina.startup.Tomcat;
 import org.apache.commons.io.FileUtils;
@@ -157,6 +152,7 @@ public class TomcatTestServer {
     private final Tomcat tomcat;
     private final File baseDir;
     private final File resourceDir;
+    private final int fixedPort;
     private TomcatTestServer server;
     private Properties properties;
 
@@ -173,7 +169,9 @@ public class TomcatTestServer {
 
       tomcat = new Tomcat();
       tomcat.setBaseDir(baseDir.getParentFile().getAbsolutePath());
-      tomcat.setPort(fixedPort);
+      this.fixedPort = fixedPort;
+      tomcat.setPort(this.fixedPort);
+      tomcat.getConnector().setPort(fixedPort);
       tomcat.getHost().setAppBase(baseDir.getAbsolutePath());
       tomcat.getHost().setDeployOnStartup(true);
       tomcat.getConnector().setSecure(false);
@@ -212,6 +210,7 @@ public class TomcatTestServer {
 
     public void atPort(final int port) {
       tomcat.setPort(port);
+      tomcat.getConnector().setPort(port);
     }
 
     public TestServerBuilder addWebApp() throws IOException {
@@ -240,10 +239,28 @@ public class TomcatTestServer {
       String contextPath = "/stub";
 
       Context context = tomcat.addWebapp(tomcat.getHost(), contextPath, webAppDir.getAbsolutePath());
-      context.setLoader(new WebappLoader(Thread.currentThread().getContextClassLoader()));
+      final WebappLoader loader = getWebappLoader();
+      context.setLoader(loader);
+
       LOG.info("Webapp {} at context {}.", webAppDir.getName(), contextPath);
 
       return this;
+    }
+
+    private static WebappLoader getWebappLoader() {
+      final WebappLoader loader = new WebappLoader();
+      final TestWebappClassLoader loaderInstance = new TestWebappClassLoader(Thread.currentThread().getContextClassLoader());
+      loader.setLoaderInstance(loaderInstance);
+      return loader;
+    }
+
+    public static class TestWebappClassLoader extends WebappClassLoader {
+      public TestWebappClassLoader() {
+      }
+
+      public TestWebappClassLoader(ClassLoader parent) {
+        super(parent);
+      }
     }
 
     private File getFileForDirProperty(final String propertyName) {
@@ -272,7 +289,7 @@ public class TomcatTestServer {
       Context cxt = getContext();
       String randomServletId = UUID.randomUUID().toString();
       Tomcat.addServlet(cxt, randomServletId, httpServlet);
-      cxt.addServletMapping(path, randomServletId);
+      cxt.addServletMappingDecoded(path, randomServletId);
       LOG.info("Added servlet {} at context {} (mapping id={}).", servletClassname, path, randomServletId);
       return this;
     }
@@ -291,7 +308,7 @@ public class TomcatTestServer {
       cxt.setAltDDName(webXMLPath);
       String randomServletId = UUID.randomUUID().toString();
       Tomcat.addServlet(cxt, randomServletId, httpServlet);
-      cxt.addServletMapping(contextPath, randomServletId); 
+      cxt.addServletMappingDecoded(contextPath, randomServletId);
 
       return this;
     }
@@ -315,7 +332,7 @@ public class TomcatTestServer {
       }
       Context cxt = getContext();
       Tomcat.addServlet(cxt, name, httpServlet);
-      cxt.addServletMapping(path, name);
+      cxt.addServletMappingDecoded(path, name);
       //
       LOG.info("Added servlet {} at context {}.", name, path);
       return this;
@@ -335,6 +352,9 @@ public class TomcatTestServer {
         return server;
       }
       baseContext.addApplicationListener(SessionHolder.class.getName());
+      final WebappLoader loader = getWebappLoader();
+      baseContext.setLoader(loader);
+      tomcat.getConnector().setPort(fixedPort);
       tomcat.start();
 
       LOG.info("Started server at endpoint "

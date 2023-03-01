@@ -68,12 +68,13 @@ public class TripPinServiceTest {
   @BeforeClass
   public static void beforeTest() throws Exception {
     tomcat.setPort(TOMCAT_PORT);
+    tomcat.getConnector().setPort(TOMCAT_PORT);
     File baseDir = new File(System.getProperty("java.io.tmpdir"));
     tomcat.setBaseDir(baseDir.getAbsolutePath());
     tomcat.getHost().setAppBase(baseDir.getAbsolutePath());
     Context cxt = tomcat.addContext("/trippin", baseDir.getAbsolutePath());
     Tomcat.addServlet(cxt, "trippin", new TripPinServlet());
-    cxt.addServletMapping("/*", "trippin");
+    cxt.addServletMappingDecoded("/*", "trippin");
     baseURL = "http://" + tomcat.getHost().getName() + ":"+ TOMCAT_PORT+"/trippin";
     tomcat.start();
   }
@@ -192,7 +193,7 @@ public class TripPinServiceTest {
   public void testErrorResponse() throws Exception {
     HttpResponse response = httpGET(baseURL + "/Airlines(1)", 400);
     Header[] headers = response.getHeaders("Content-Type");
-    assertEquals("application/json; odata.metadata=minimal", headers[0].getValue());
+    assertEquals("application/json;odata.metadata=minimal", headers[0].getValue());
     assertEquals("{\"error\":{\"code\":null,\"message\":\"The key value '' is invalid.\"}}", 
         IOUtils.toString(response.getEntity().getContent()));
   }
